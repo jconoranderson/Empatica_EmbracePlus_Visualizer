@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PublishTrimmed>false</PublishTrimmed>
+    <WasmEnableWebcil>false</WasmEnableWebcil>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Blazor-ApexCharts" Version="6.0.2" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="8.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="8.0.0" PrivateAssets="all" />
+    <PackageReference Include="MudBlazor" Version="7.0.0" />
+    <PackageReference Include="Blazored.LocalStorage" Version="4.3.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../BioSignalVisualizer.Shared/BioSignalVisualizer.Shared.csproj" />
+  </ItemGroup>
+</Project>

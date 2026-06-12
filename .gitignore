@@ -1,0 +1,24 @@
+# Ignore data directories and sensitive files
+data/
+.empatica/
+*.csv
+*.pdf
+annotations_store.json
+*.jsonl
+
+# Ignore IDE and OS files
+.DS_Store
+.idea/
+.vscode/
+*.user
+*.suo
+
+# Ignore ASP.NET Core build output
+asp/**/bin/
+asp/**/obj/
+asp/**/TestResults/
+
+# Ignore frontend build output
+visualizer/node_modules/
+visualizer/dist/
+visualizer/.next/

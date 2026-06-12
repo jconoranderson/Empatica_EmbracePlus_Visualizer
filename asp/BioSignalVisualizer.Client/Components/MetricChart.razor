@@ -1,0 +1,289 @@
+@using MudBlazor
+@using ApexCharts
+
+@if (Metric?.Points is null || !Metric.Points.Any())
+{
+    <MudPaper Class="pa-4" Elevation="1">No data available.</MudPaper>
+}
+else
+{
+    <MudPaper Class="pa-2 mb-2 compact-chart" Elevation="1">
+        <MudText Typo="Typo.subtitle1" Class="text-uppercase fw-bold mb-1 compact-chart-title">@_displayName</MudText>
+        <div class="metric-chart-wrapper" style="@($"height:{Height}px")">
+            <ApexChart @ref="_chart"
+                       TItem="DataPoint"
+                       Options="_options"
+                       Height="@("100%")">
+
+                <ApexPointSeries TItem="DataPoint"
+                                 Items="Metric.Points"
+                                 Name="@_displayName"
+                                 SeriesType="SeriesType.Line"
+                                 XValue="@(e => GetChartTimestamp(e.Timestamp))"
+                                 YValue="@(e => GetDisplayValue(e))" />
+
+            </ApexChart>
+
+        </div>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public MetricSeries? Metric { get; set; }
+    [Parameter] public double Height { get; set; } = 260;
+    [Parameter] public IEnumerable<AnnotationEntry> Annotations { get; set; } = Enumerable.Empty<AnnotationEntry>();
+    [Parameter] public IEnumerable<ActivityWindow> ActivityWindows { get; set; } = Enumerable.Empty<ActivityWindow>();
+    [Parameter] public bool ShowActivityLabels { get; set; } = false;
+
+    private string _displayName = string.Empty;
+    private List<ActivityLegendItem> _legendItems = new();
+    private ApexChartOptions<DataPoint> _options = new();
+
+    private ApexChart<DataPoint>? _chart;
+    private bool _previousShowActivityLabels;
+
+    private int _previousAnnotationsHash = -1;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Metric is null || !Metric.Points.Any())
+        {
+            return;
+        }
+
+        _displayName = GetDisplayName(Metric.Metric);
+
+        BuildChartOptions();
+
+        bool redrawRequired = false;
+
+        if (ShowActivityLabels != _previousShowActivityLabels)
+        {
+            _previousShowActivityLabels = ShowActivityLabels;
+            redrawRequired = true;
+        }
+
+        var currentAnnotationsHash = string.Join("|", Annotations.Select(a => $"{a.Timestamp.Ticks}-{a.IsRange}-{a.EndTimestamp?.Ticks}-{a.Note}")).GetHashCode();
+        if (currentAnnotationsHash != _previousAnnotationsHash)
+        {
+            _previousAnnotationsHash = currentAnnotationsHash;
+            redrawRequired = true;
+        }
+
+        if (redrawRequired && _chart is not null)
+        {
+            await _chart.RenderAsync();
+        }
+    }
+
+    private void BuildChartOptions()
+    {
+        var xAnnotations = new List<AnnotationsXAxis>();
+
+        // Activity Windows as shaded regions
+        if (ShowActivityLabels)
+        {
+            foreach (var window in ActivityWindows)
+            {
+                var ann = new AnnotationsXAxis
+                {
+                    X = GetChartTimestamp(window.Start),
+                    X2 = GetChartTimestamp(window.End),
+                    FillColor = window.Color,
+                    Opacity = 0.2
+                };
+
+                xAnnotations.Add(ann);
+            }
+        }
+
+        var greyShades = new[] { "#1f2937", "#374151", "#4b5563", "#6b7280", "#9ca3af" };
+
+        var uniquePointNotes = Annotations
+            .Where(a => !a.IsRange)
+            .Select(a => a.Note)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        // Annotations
+        foreach (var annotation in Annotations.OrderBy(a => a.Timestamp))
+        {
+            if (annotation.IsRange && annotation.EndTimestamp.HasValue)
+            {
+                var startX = GetChartTimestamp(annotation.Timestamp);
+                var endX = GetChartTimestamp(annotation.EndTimestamp.Value);
+                
+                // The shaded region
+                xAnnotations.Add(new AnnotationsXAxis
+                {
+                    X = startX,
+                    X2 = endX,
+                    FillColor = "#374151",
+                    Opacity = 0.2
+                });
+                
+                // The centered label (invisible line at midpoint)
+                var midPoint = startX + (endX - startX) / 2m;
+                xAnnotations.Add(new AnnotationsXAxis
+                {
+                    X = midPoint,
+                    BorderWidth = 0,
+                    Label = new Label
+                    {
+                        Text = annotation.Note,
+                        Orientation = ApexCharts.Orientation.Horizontal,
+                        TextAnchor = ApexCharts.TextAnchor.Middle,
+                        Style = new Style { Color = "#fff", Background = "#374151", FontSize = "10px" }
+                    }
+                });
+            }
+            else
+            {
+                int noteIndex = uniquePointNotes.FindIndex(n => string.Equals(n, annotation.Note, StringComparison.OrdinalIgnoreCase));
+                int pointIndex = Math.Max(0, noteIndex) % 5;
+                var pointColor = greyShades[pointIndex];
+                
+                // Point annotations as markers
+                xAnnotations.Add(new AnnotationsXAxis
+                {
+                    X = GetChartTimestamp(annotation.Timestamp),
+                    StrokeDashArray = 4,
+                    BorderColor = pointColor,
+                    Label = new Label
+                    {
+                        Text = annotation.Note,
+                        Orientation = ApexCharts.Orientation.Horizontal,
+                        OffsetY = pointIndex * 26, // Stack overlapping point labels
+                        Style = new Style { Color = "#fff", Background = pointColor, FontSize = "10px" }
+                    }
+                });
+            }
+        }
+
+        var minX = Metric.Points.Min(p => p.Timestamp);
+        var maxX = Metric.Points.Max(p => p.Timestamp);
+
+        _options = new ApexChartOptions<DataPoint>
+        {
+            Chart = new Chart
+            {
+                Toolbar = new Toolbar { Show = true },
+                Zoom = new Zoom { Enabled = true, Type = AxisType.X },
+                Animations = new Animations { Enabled = false }
+            },
+            Xaxis = new XAxis
+            {
+                Type = XAxisType.Datetime,
+                Labels = new XAxisLabels { DatetimeUTC = true, Format = "HH:mm" },
+                Min = GetChartTimestamp(minX),
+                Max = GetChartTimestamp(maxX)
+            },
+            Yaxis = new List<YAxis>
+            {
+                new YAxis 
+                { 
+                    Title = new AxisTitle { Text = GetUnit(Metric.Metric) },
+                    Labels = new YAxisLabels { MinWidth = 60, MaxWidth = 60 },
+                    DecimalsInFloat = MetricSuffix(Metric.Metric).Equals("TEMPERATURE", StringComparison.OrdinalIgnoreCase) ? 0 : null
+                }
+            },
+            Stroke = new Stroke { Curve = new List<Curve> { Curve.Straight }, Width = 2 },
+            Annotations = new Annotations { Xaxis = xAnnotations },
+            DataLabels = new DataLabels { Enabled = false },
+            Legend = new Legend { Show = false },
+            Colors = new List<string> { GetMetricColor(Metric.Metric) }
+        };
+    }
+
+    private decimal GetDisplayValue(DataPoint p)
+    {
+        var isTemperature = MetricSuffix(Metric.Metric).Equals("TEMPERATURE", StringComparison.OrdinalIgnoreCase);
+        var val = isTemperature ? Math.Round(p.Value * 9.0 / 5.0 + 32.0) : p.Value;
+        return (decimal)val;
+    }
+
+    public static string GetDisplayName(string metricName)
+    {
+        if (string.IsNullOrWhiteSpace(metricName)) return string.Empty;
+        
+        var suffix = MetricSuffix(metricName).ToUpperInvariant();
+        if (suffix == "EDA") return "ELECTRODERMAL ACTIVITY";
+        
+        var dashIndex = suffix.IndexOf('-');
+        if (dashIndex > 0)
+        {
+            suffix = suffix[..dashIndex];
+        }
+        
+        return suffix;
+    }
+
+    private static string GetUnit(string metricName)
+    {
+        if (string.IsNullOrWhiteSpace(metricName)) return string.Empty;
+
+        var suffix = MetricSuffix(metricName).ToUpperInvariant();
+        return suffix switch
+        {
+            "ACCELEROMETERS-STD" => "g",
+            "EDA" => "μS",
+            "PRV" => "ms",
+            "PULSE-RATE" => "bpm",
+            "RESPIRATORY-RATE" => "brpm",
+            "TEMPERATURE" => "°F",
+            "WEARING-DETECTION" => "%",
+            "STEP-COUNTS" => "counts",
+            "ACTIVITY-COUNTS" => "counts",
+            "ACTIGRAPHY-COUNTS" => "counts",
+            "ACTICOUNTS" => "counts",
+            "MET" => "MET",
+            _ => string.Empty
+        };
+    }
+
+    private static string GetMetricColor(string metricName)
+    {
+        if (string.IsNullOrWhiteSpace(metricName)) return "#1f2937";
+
+        var suffix = MetricSuffix(metricName).ToUpperInvariant();
+        return suffix switch
+        {
+            "EDA" => "#166534",               // Dark Green
+            "ACCELEROMETERS-STD" => "#1e3a8a", // Dark Blue
+            "ACTIGRAPHY-COUNTS" => "#1e3a8a",  // Dark Blue
+            "PULSE-RATE" => "#991b1b",         // Dark Red
+            "TEMPERATURE" => "#ea580c",        // Orange
+            "PRV" => "#4c1d95",                // Dark Purple
+            "RESPIRATORY-RATE" => "#374151",   // Dark Gray/Slate
+            _ => "#1f2937"
+        };
+    }
+
+    private static string MetricSuffix(string name)
+    {
+        var lastUnderscore = name.LastIndexOf('_');
+        return lastUnderscore >= 0 && lastUnderscore < name.Length - 1 ? name[(lastUnderscore + 1)..] : name;
+    }
+
+    private static DateTime ConvertToEst(DateTime utcDateTime)
+    {
+        try
+        {
+            var estZone = TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
+            return TimeZoneInfo.ConvertTimeFromUtc(utcDateTime.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(utcDateTime, DateTimeKind.Utc) : utcDateTime.ToUniversalTime(), estZone);
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            var estZone = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
+            return TimeZoneInfo.ConvertTimeFromUtc(utcDateTime.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(utcDateTime, DateTimeKind.Utc) : utcDateTime.ToUniversalTime(), estZone);
+        }
+    }
+
+    private static long GetChartTimestamp(DateTime utcDateTime)
+    {
+        var estTime = ConvertToEst(utcDateTime);
+        return new DateTimeOffset(estTime, TimeSpan.Zero).ToUnixTimeMilliseconds();
+    }
+
+    private sealed record ActivityLegendItem(string Label, string Color);
+}

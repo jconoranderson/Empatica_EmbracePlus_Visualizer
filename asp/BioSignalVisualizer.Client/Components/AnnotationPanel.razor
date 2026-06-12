@@ -1,0 +1,250 @@
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+
+<MudText Typo="Typo.h6">Annotations</MudText>
+
+@if (!FilteredAnnotations.Any())
+{
+    <MudText Color="Color.Secondary">No annotations yet.</MudText>
+}
+else
+{
+    <div style="max-height: 200px; overflow-y: auto;">
+        <MudTable Items="@FilteredAnnotations" Dense="true" Hover="true" Elevation="0">
+            <HeaderContent>
+                <MudTh>Time</MudTh>
+                <MudTh>Note</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Time">
+                    @if (context.IsRange && context.EndTimestamp.HasValue)
+                    {
+                        @($"{ConvertToEst(context.Timestamp):MM/dd HH:mm} - {ConvertToEst(context.EndTimestamp.Value):HH:mm}")
+                    }
+                    else
+                    {
+                        @($"{ConvertToEst(context.Timestamp):MM/dd HH:mm}")
+                    }
+                </MudTd>
+                <MudTd DataLabel="Note">@FormatNote(context)</MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="() => Remove(context)" />
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </div>
+}
+
+<MudRadioGroup @bind-Value="_isRangeEvent" Class="mt-2">
+    <MudRadio Value="false" Color="Color.Primary" Dense="true">Point Event</MudRadio>
+    <MudRadio Value="true" Color="Color.Primary" Dense="true">Range Event</MudRadio>
+</MudRadioGroup>
+
+<MudSelect T="string"
+           @bind-Value="_selectedTimestampKey"
+           Label="@(_isRangeEvent ? "Start Time" : "Timestamp")"
+           Disabled="!AvailableTimes.Any()"
+           Dense="true"
+           Class="mt-2"
+           id="annotationtimestampselect"
+           ToStringFunc="FormatTimestampLabel">
+    @foreach (var time in AvailableTimes)
+    {
+        <MudSelectItem Value="@GetTimestampKey(time)">@ConvertToEst(time).ToString("yyyy-MM-dd hh:mm tt")</MudSelectItem>
+    }
+</MudSelect>
+
+@if (_isRangeEvent)
+{
+    <MudSelect T="string"
+               @bind-Value="_selectedEndTimestampKey"
+               Label="End Time"
+               Disabled="!AvailableTimes.Any()"
+               Dense="true"
+               Class="mt-2"
+               id="annotationendtimestampselect"
+               ToStringFunc="FormatTimestampLabel">
+        @foreach (var time in AvailableTimes.Where(t => ParseTimestampKey(_selectedTimestampKey) == null || t > ParseTimestampKey(_selectedTimestampKey)))
+        {
+            <MudSelectItem Value="@GetTimestampKey(time)">@ConvertToEst(time).ToString("yyyy-MM-dd hh:mm tt")</MudSelectItem>
+        }
+    </MudSelect>
+}
+
+<MudTextField @bind-Value="_newNote"
+              Label="Add note"
+              Variant="Variant.Outlined"
+              Lines="2"
+              Class="mt-2"
+              id="annotationnotefield" />
+<div class="d-flex gap-2 mt-2">
+    <MudButton Variant="Variant.Filled"
+               Color="Color.Primary"
+               OnClick="Add"
+               Disabled="!CanAddAnnotation()">
+        Add annotation
+    </MudButton>
+    <MudButton Variant="Variant.Outlined"
+               Color="Color.Secondary"
+               OnClick="ExportCsv"
+               Disabled="@(Annotations.Count == 0)">
+        Export CSV
+    </MudButton>
+</div>
+
+@code {
+    [Parameter] public string? SelectedDate { get; set; }
+    [Parameter] public string? SelectedParticipant { get; set; }
+    [Parameter] public IEnumerable<string> DisplayedMetrics { get; set; } = Array.Empty<string>();
+    [Parameter] public IReadOnlyList<DateTime> AvailableTimes { get; set; } = Array.Empty<DateTime>();
+
+    [Parameter] public List<AnnotationEntry> Annotations { get; set; } = new();
+    [Parameter] public EventCallback<List<AnnotationEntry>> OnAnnotationsChanged { get; set; }
+
+    private string _newNote = string.Empty;
+    private string? _selectedTimestampKey;
+    private string? _selectedEndTimestampKey;
+    private bool _isRangeEvent = false;
+
+    private bool _selectedTimestampKeyMatched => !string.IsNullOrWhiteSpace(_selectedTimestampKey)
+        && AvailableTimes.Any(t => GetTimestampKey(t) == _selectedTimestampKey);
+
+    private bool _selectedEndTimestampKeyMatched => !string.IsNullOrWhiteSpace(_selectedEndTimestampKey)
+        && AvailableTimes.Any(t => GetTimestampKey(t) == _selectedEndTimestampKey);
+
+    private bool CanAddAnnotation()
+    {
+        if (string.IsNullOrWhiteSpace(_newNote) || !_selectedTimestampKeyMatched || string.IsNullOrWhiteSpace(SelectedDate) || string.IsNullOrWhiteSpace(SelectedParticipant)) return false;
+        if (_isRangeEvent)
+        {
+            if (!_selectedEndTimestampKeyMatched) return false;
+            var start = ParseTimestampKey(_selectedTimestampKey);
+            var end = ParseTimestampKey(_selectedEndTimestampKey);
+            if (start == null || end == null || end.Value <= start.Value) return false;
+        }
+        return true;
+    }
+
+    private IEnumerable<AnnotationEntry> FilteredAnnotations =>
+        Annotations
+            .Where(a => (string.IsNullOrWhiteSpace(SelectedDate) || a.Date == SelectedDate)
+                     && (string.IsNullOrWhiteSpace(SelectedParticipant) || a.Participant == SelectedParticipant)
+                     && (!DisplayedMetrics.Any() || DisplayedMetrics.Contains(a.Metric) || string.Equals(a.Metric, "Global", StringComparison.OrdinalIgnoreCase)))
+            .OrderBy(a => a.Timestamp);
+
+    protected override void OnParametersSet()
+    {
+        if (AvailableTimes.Count == 0)
+        {
+            _selectedTimestampKey = null;
+            return;
+        }
+
+        if (_selectedTimestampKey is null || !AvailableTimes.Any(t => GetTimestampKey(t) == _selectedTimestampKey))
+        {
+            _selectedTimestampKey = GetTimestampKey(AvailableTimes.First());
+        }
+    }
+
+    private async Task Add()
+    {
+        var timestamp = ParseTimestampKey(_selectedTimestampKey);
+        if (string.IsNullOrWhiteSpace(SelectedDate) || string.IsNullOrWhiteSpace(SelectedParticipant) || timestamp is null)
+        {
+            return;
+        }
+        
+        DateTime? endTimestamp = null;
+        if (_isRangeEvent)
+        {
+            endTimestamp = ParseTimestampKey(_selectedEndTimestampKey);
+            if (endTimestamp is null || endTimestamp.Value <= timestamp.Value) return;
+        }
+
+        var entry = new AnnotationEntry(
+            Date: SelectedDate!,
+            Participant: SelectedParticipant!,
+            Metric: DisplayedMetrics.Count() == 1 ? DisplayedMetrics.First() : "Global",
+            Timestamp: timestamp.Value,
+            Note: _newNote.Trim(),
+            IsRange: _isRangeEvent,
+            EndTimestamp: endTimestamp);
+            
+        Annotations.Add(entry);
+        _newNote = string.Empty;
+        await OnAnnotationsChanged.InvokeAsync(Annotations);
+    }
+
+    private async Task Remove(AnnotationEntry entry)
+    {
+        Annotations.Remove(entry);
+        await OnAnnotationsChanged.InvokeAsync(Annotations);
+    }
+
+    private static string FormatNote(AnnotationEntry entry)
+    {
+        return string.Equals(entry.Metric, "Global", StringComparison.OrdinalIgnoreCase)
+            ? entry.Note
+            : $"{entry.Metric}: {entry.Note}";
+    }
+
+    private static string GetTimestampKey(DateTime value)
+        => value.ToUniversalTime().ToString("O");
+
+    private static DateTime? ParseTimestampKey(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        if (DateTime.TryParse(value, null, System.Globalization.DateTimeStyles.RoundtripKind, out var parsed))
+        {
+            return DateTime.SpecifyKind(parsed.ToUniversalTime(), DateTimeKind.Utc);
+        }
+
+        return null;
+    }
+
+    private static string FormatTimestampLabel(string? value)
+    {
+        var timestamp = ParseTimestampKey(value);
+        return timestamp.HasValue ? ConvertToEst(timestamp.Value).ToString("yyyy-MM-dd hh:mm tt") : string.Empty;
+    }
+
+    private async Task ExportCsv()
+    {
+        if (Annotations.Count == 0) return;
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Participant,Date,StartTimestamp,EndTimestamp,IsRange,Annotation");
+        foreach (var a in Annotations)
+        {
+            var formattedNote = FormatNote(a).Replace("\"", "\"\"");
+            var startStr = ConvertToEst(a.Timestamp).ToString("yyyy-MM-dd hh:mm:ss tt");
+            var endStr = a.IsRange && a.EndTimestamp.HasValue ? ConvertToEst(a.EndTimestamp.Value).ToString("yyyy-MM-dd hh:mm:ss tt") : "";
+            sb.AppendLine($"{a.Participant},{a.Date},{startStr},{endStr},{a.IsRange},\"{formattedNote}\"");
+        }
+
+        var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
+        var base64 = Convert.ToBase64String(bytes);
+        
+        var fileName = $"annotations_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
+        await JS.InvokeVoidAsync("BlazorDownloadFile", fileName, "text/csv", base64);
+    }
+
+    private static DateTime ConvertToEst(DateTime utcDateTime)
+    {
+        try
+        {
+            var estZone = TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
+            return TimeZoneInfo.ConvertTimeFromUtc(utcDateTime.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(utcDateTime, DateTimeKind.Utc) : utcDateTime.ToUniversalTime(), estZone);
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            var estZone = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
+            return TimeZoneInfo.ConvertTimeFromUtc(utcDateTime.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(utcDateTime, DateTimeKind.Utc) : utcDateTime.ToUniversalTime(), estZone);
+        }
+    }
+}

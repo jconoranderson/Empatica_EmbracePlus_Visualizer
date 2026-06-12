@@ -1,0 +1,509 @@
+@page "/"
+@inject CatalogClient Catalogs
+@inject MetricsClient Metrics
+@inject AnnotationsClient Annotations
+@inject ActivityClient Activity
+@inject PdfClient Pdfs
+@inject Blazored.LocalStorage.ILocalStorageService Storage
+@inject ISnackbar Snackbar
+@using Microsoft.JSInterop
+
+<PageTitle>Bio-Signal Visualizer</PageTitle>
+
+<MudGrid Class="mt-4">
+    <MudItem xs="12" md="3">
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudText Typo="Typo.h6">Data Selection</MudText>
+            <MudSelect T="string" @bind-Value="SelectedDate" Label="Date" Immediate="true" id="dateselect">
+                @foreach (var date in _dates)
+                {
+                    <MudSelectItem Value="@date">@date</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSelect T="string"
+                       @bind-Value="SelectedParticipant"
+                       Label="Participant"
+                       Disabled="string.IsNullOrEmpty(_selectedDate)"
+                       Immediate="true"
+                       id="participantselect">
+                @foreach (var participant in _participants)
+                {
+                    <MudSelectItem Value="@participant">@participant</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSelect T="string"
+                       MultiSelection="true"
+                       @bind-SelectedValues="SelectedMetrics"
+                       Label="Metric"
+                       Disabled="string.IsNullOrEmpty(_selectedParticipant)"
+                       id="metricselect">
+                <MudSelectItem Value="@DefaultMetricsToken">Default metrics</MudSelectItem>
+                <MudSelectItem Value="@AllMetricsToken">All metrics</MudSelectItem>
+                @foreach (var metric in _metrics)
+                {
+                    <MudSelectItem Value="@metric">@MetricChart.GetDisplayName(metric)</MudSelectItem>
+                }
+            </MudSelect>
+            <MudText Typo="Typo.subtitle2" Class="mt-4 mb-1">Chart height</MudText>
+            <MudSlider Value="_chartHeight"
+                       ValueChanged="@((double value) => OnChartHeightChanged(value))"
+                       Min="120"
+                       Max="420"
+                       Step="20"
+                       Immediate="true"
+                       id="chartheightslider" />
+            <MudSwitch T="bool" @bind-Value="ShowActivityLabels" Color="Color.Primary" Label="Show Activity" Class="mt-2" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="DownloadPdf" Disabled="_series.Count == 0" Class="mt-2 text-nowrap">Download PDF</MudButton>
+        </MudPaper>
+
+        <MudPaper Class="pa-4 mt-4" Elevation="1">
+            <AnnotationPanel Annotations="_annotations"
+                              SelectedDate="@_selectedDate"
+                              SelectedParticipant="@_selectedParticipant"
+                              DisplayedMetrics="@(_series.Select(s => s.Metric))"
+                              AvailableTimes="_availableTimepoints"
+                              OnAnnotationsChanged="HandleAnnotationsChanged" />
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" md="9">
+        <MudDropContainer @ref="_dropContainer" T="MetricSeries" Items="@_series" ItemsSelector="@((item,dropzone) => true)" ItemDropped="ItemUpdated" Class="d-flex flex-column gap-4">
+            <ChildContent>
+                <MudDropZone T="MetricSeries" Identifier="charts" Class="flex-grow-1" AllowReorder="true" />
+            </ChildContent>
+            <ItemRenderer>
+                <div style="position: relative;">
+                    <div style="position: absolute; top: 12px; right: 12px; z-index: 10; cursor: grab;" class="mud-text-secondary">
+                        <MudIcon Icon="@Icons.Material.Filled.DragIndicator" />
+                    </div>
+                    <MetricChart Metric="context"
+                                 Height="_chartHeight"
+                                 Annotations="GetAnnotationsForChart(context.Metric)"
+                                 ActivityWindows="_activityWindows"
+                                 ShowActivityLabels="_showActivityLabels" />
+                </div>
+            </ItemRenderer>
+        </MudDropContainer>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private const string DefaultMetricsToken = "__DEFAULT_METRICS__";
+    private const string AllMetricsToken = "__ALL_METRICS__";
+    private const double DefaultChartHeight = 160;
+    private static readonly string[] DefaultMetricOrder =
+    {
+        "eda",
+        "actigraphy-counts",
+        "pulse-rate",
+        "temperature"
+    };
+    private List<CatalogEntry> _catalogEntries = new();
+    private List<string> _dates = new();
+    private List<string> _participants = new();
+    private List<string> _metrics = new();
+
+    private string? _selectedDate;
+    private string? _selectedParticipant;
+    private IEnumerable<string> _selectedMetrics = new HashSet<string> { DefaultMetricsToken };
+
+    private MudDropContainer<MetricSeries>? _dropContainer;
+    private readonly List<MetricSeries> _series = new();
+    private List<AnnotationEntry> _annotations = new();
+    private List<DateTime> _availableTimepoints = new();
+    private List<ActivityWindow> _activityWindows = new();
+
+    private double _chartHeight = DefaultChartHeight;
+    private bool _userChartHeightLocked;
+    
+    private bool _showActivityLabels = false;
+    private bool ShowActivityLabels
+    {
+        get => _showActivityLabels;
+        set
+        {
+            if (_showActivityLabels != value)
+            {
+                _showActivityLabels = value;
+                StateHasChanged();
+                _dropContainer?.Refresh();
+            }
+        }
+    }
+
+    private string? SelectedDate
+    {
+        get => _selectedDate;
+        set
+        {
+            if (_selectedDate == value)
+            {
+                return;
+            }
+
+            _selectedDate = value;
+            _ = InvokeAsync(async () => await OnDateChanged(value));
+        }
+    }
+
+    private string? SelectedParticipant
+    {
+        get => _selectedParticipant;
+        set
+        {
+            if (_selectedParticipant == value)
+            {
+                return;
+            }
+
+            _selectedParticipant = value;
+            _ = InvokeAsync(async () => await OnParticipantChanged(value));
+        }
+    }
+
+    private IEnumerable<string> SelectedMetrics
+    {
+        get => _selectedMetrics;
+        set
+        {
+            var valueList = value.ToList();
+            if (_selectedMetrics.SequenceEqual(valueList))
+            {
+                return;
+            }
+
+            _selectedMetrics = valueList;
+            _ = InvokeAsync(async () => await OnMetricsChanged(_selectedMetrics));
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var storedHeight = await Storage.GetItemAsync<double?>("chartHeight");
+        if (storedHeight.HasValue)
+        {
+            _chartHeight = storedHeight.Value;
+            _userChartHeightLocked = true;
+        }
+        else
+        {
+            _chartHeight = DefaultChartHeight;
+        }
+        await LoadCatalogAsync();
+        _annotations = await Annotations.GetAsync();
+
+        if (_dates.Any())
+        {
+            await OnDateChanged(_dates.First());
+            if (_participants.Any())
+            {
+                await OnParticipantChanged(_participants.First());
+            }
+        }
+        await SetChartHeightFromViewport();
+    }
+
+    private async Task LoadCatalogAsync()
+    {
+        _catalogEntries = (await Catalogs.GetCatalogAsync()).ToList();
+        _dates = _catalogEntries.Select(e => e.Date).Distinct().OrderByDescending(d => d).ToList();
+    }
+
+    private async Task OnDateChanged(string? value)
+    {
+        _selectedDate = value;
+        _selectedParticipant = null;
+        _selectedMetrics = new HashSet<string> { DefaultMetricsToken };
+        _series.Clear();
+        _participants = await GetParticipantsAsync(value);
+        _metrics.Clear();
+
+        if (_participants.Any())
+        {
+            _selectedParticipant = _participants.First();
+            await OnParticipantChanged(_selectedParticipant);
+        }
+        else
+        {
+            _activityWindows = new List<ActivityWindow>();
+            UpdateAvailableTimepoints();
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnParticipantChanged(string? value)
+    {
+        _selectedParticipant = value;
+        _selectedMetrics = new HashSet<string> { DefaultMetricsToken };
+        _series.Clear();
+        _metrics = GetMetrics(value);
+        await LoadActivityWindowsAsync();
+        await OnMetricsChanged(_selectedMetrics);
+        UpdateAvailableTimepoints();
+    }
+
+    private async Task OnMetricsChanged(IEnumerable<string> values)
+    {
+        _series.Clear();
+        if (_selectedDate is null || _selectedParticipant is null || !values.Any())
+        {
+            UpdateAvailableTimepoints();
+            StateHasChanged();
+            return;
+        }
+
+        var metricsToLoad = new HashSet<string>();
+
+        if (values.Contains(AllMetricsToken))
+        {
+            foreach (var m in _metrics) metricsToLoad.Add(m);
+        }
+        else
+        {
+            if (values.Contains(DefaultMetricsToken))
+            {
+                foreach (var m in GetDefaultMetricsToDisplay()) metricsToLoad.Add(m);
+            }
+            foreach (var v in values)
+            {
+                if (v != DefaultMetricsToken && v != AllMetricsToken)
+                {
+                    metricsToLoad.Add(v);
+                }
+            }
+        }
+
+        await LoadMetricSeriesAsync(metricsToLoad);
+
+        UpdateAvailableTimepoints();
+        StateHasChanged();
+        
+        // Refresh the drop container so it renders the new items
+        _dropContainer?.Refresh();
+    }
+
+    private Task<List<string>> GetParticipantsAsync(string? date)
+    {
+        var participants = string.IsNullOrEmpty(date)
+            ? new List<string>()
+            : _catalogEntries
+                .Where(e => e.Date == date)
+                .Select(e => e.Participant)
+                .Distinct()
+                .OrderBy(p => p)
+                .ToList();
+
+        return Task.FromResult(participants);
+    }
+
+    private List<string> GetMetrics(string? participant)
+    {
+        if (_selectedDate is null || string.IsNullOrEmpty(participant))
+        {
+            return new List<string>();
+        }
+
+        return _catalogEntries
+            .Where(e => e.Date == _selectedDate && e.Participant == participant)
+            .SelectMany(e => e.Metrics)
+            .OrderBy(m => m)
+            .ToList();
+    }
+
+    private async Task HandleAnnotationsChanged(List<AnnotationEntry> updatedAnnotations)
+    {
+        _annotations = updatedAnnotations;
+        await Annotations.SaveAsync(_annotations);
+        StateHasChanged();
+    }
+
+    private void ItemUpdated(MudItemDropInfo<MetricSeries> dropItem)
+    {
+        _series.Remove(dropItem.Item);
+        _series.Insert(dropItem.IndexInZone, dropItem.Item);
+    }
+
+    private async Task DownloadPdf()
+    {
+        if (_selectedDate is null || _selectedParticipant is null || _series.Count == 0)
+        {
+            return;
+        }
+
+        var annotationSubset = _annotations
+            .Where(a => a.Date == _selectedDate && a.Participant == _selectedParticipant)
+            .ToList();
+        var activitySubset = _showActivityLabels ? _activityWindows : new List<ActivityWindow>();
+        var request = new PdfExportRequest(_selectedDate, _selectedParticipant, _series, annotationSubset, activitySubset);
+        var bytes = await Pdfs.DownloadSummaryAsync(request);
+        var fileName = $"{_selectedParticipant}-{_selectedDate}.pdf";
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("BlazorDownloadFile", fileName, "application/pdf", base64);
+    }
+
+    [Inject]
+    private IJSRuntime JS { get; set; } = default!;
+
+    private async Task OnChartHeightChanged(double value)
+    {
+        _chartHeight = value;
+        _userChartHeightLocked = true;
+        await Storage.SetItemAsync("chartHeight", value);
+        StateHasChanged();
+        _dropContainer?.Refresh();
+    }
+
+    private IEnumerable<string> GetDefaultMetricsToDisplay()
+    {
+        if (_metrics.Count == 0)
+        {
+            return Enumerable.Empty<string>();
+        }
+
+        var selection = new List<string>();
+        foreach (var target in DefaultMetricOrder)
+        {
+            var match = _metrics.FirstOrDefault(m => MetricMatches(m, target));
+            if (match is not null && !selection.Any(m => string.Equals(m, match, StringComparison.OrdinalIgnoreCase)))
+            {
+                selection.Add(match);
+            }
+        }
+
+        if (selection.Count > 0)
+        {
+            return selection;
+        }
+
+        return _metrics.Take(Math.Min(4, _metrics.Count));
+    }
+
+    private async Task LoadActivityWindowsAsync()
+    {
+        if (_selectedDate is null || _selectedParticipant is null)
+        {
+            _activityWindows = new List<ActivityWindow>();
+            return;
+        }
+
+        var windows = await Activity.GetWindowsAsync(_selectedDate, _selectedParticipant);
+        _activityWindows = windows.ToList();
+    }
+
+    private async Task LoadMetricSeriesAsync(IEnumerable<string> metrics)
+    {
+        foreach (var metric in metrics)
+        {
+            var result = await Metrics.GetSeriesAsync(_selectedDate!, _selectedParticipant!, metric);
+            if (result is not null)
+            {
+                _series.Add(result);
+            }
+        }
+        UpdateAvailableTimepoints();
+        if (_series.Count > 0)
+        {
+            await SetChartHeightFromViewport();
+        }
+    }
+
+    private static bool MetricMatches(string candidate, string target)
+    {
+        if (string.IsNullOrWhiteSpace(candidate) || string.IsNullOrWhiteSpace(target))
+        {
+            return false;
+        }
+
+        if (candidate.Equals(target, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var suffix = GetMetricSuffix(candidate);
+        return suffix.Equals(target, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string GetMetricSuffix(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return string.Empty;
+        }
+
+        var lastUnderscore = name.LastIndexOf('_');
+        if (lastUnderscore >= 0 && lastUnderscore < name.Length - 1)
+        {
+            return name[(lastUnderscore + 1)..];
+        }
+
+        return name;
+    }
+
+    private IEnumerable<AnnotationEntry> GetAnnotationsForChart(string metricName)
+    {
+        return _annotations.Where(a => a.Date == _selectedDate && a.Participant == _selectedParticipant);
+    }
+
+    private void UpdateAvailableTimepoints()
+    {
+        if (_series.Count == 0)
+        {
+            _availableTimepoints = new List<DateTime>();
+            return;
+        }
+
+        // An annotation should appear on every chart, so only allow timestamps that
+        // are present across all currently displayed metric series.
+        var intersection = _series
+            .Select(series => series.Points.Select(p => p.Timestamp).ToHashSet())
+            .Aggregate((HashSet<DateTime> acc, HashSet<DateTime> next) =>
+            {
+                acc.IntersectWith(next);
+                return acc;
+            });
+
+        if (intersection.Count == 0)
+        {
+            // Fall back to the shared range if the series do not overlap perfectly.
+            var min = _series.SelectMany(s => s.Points).Min(p => p.Timestamp);
+            var max = _series.SelectMany(s => s.Points).Max(p => p.Timestamp);
+            _availableTimepoints = _series
+                .SelectMany(s => s.Points)
+                .Select(p => p.Timestamp)
+                .Where(t => t >= min && t <= max)
+                .Distinct()
+                .OrderBy(t => t)
+                .ToList();
+        }
+        else
+        {
+            _availableTimepoints = intersection
+                .OrderBy(t => t)
+                .ToList();
+        }
+    }
+
+    private async Task SetChartHeightFromViewport()
+    {
+        if (_series.Count == 0 || _userChartHeightLocked)
+        {
+            return;
+        }
+
+        try
+        {
+            var chartCount = Math.Max(1, _series.Count);
+            var recommended = await JS.InvokeAsync<double>("metricChart.calculateFitHeight", chartCount);
+            var rounded = Math.Round(recommended / 20) * 20;
+            var clamped = Math.Clamp(rounded, 120, 420);
+            _chartHeight = clamped;
+            await Storage.SetItemAsync("chartHeight", _chartHeight);
+            StateHasChanged();
+            _dropContainer?.Refresh();
+        }
+        catch (JSException)
+        {
+            // JS not ready; keep previous value.
+        }
+    }
+
+}

@@ -1,45 +1,39 @@
-# Empatica Digital Biomarker Viewer
+# Bio-Signal Visualizer
 
-This repository now includes a lightweight Streamlit application that scans the date-based Empatica exports stored in this folder and visualises the per-minute CSV metrics.
+A modern, highly interactive ASP.NET Blazor application designed to visualize, annotate, and export high-resolution biometric and activity data (such as data from Empatica devices). 
 
-## Setup
+## 🌟 Key Features
 
-1. (Recommended) Create and activate a virtual environment:
+* **Dynamic Data Rendering**: Built using the powerful `Blazor-ApexCharts` library for smooth, interactive, and beautifully customized line and scatter plots.
+* **Modern UI/UX**: Designed with `MudBlazor`, featuring a custom premium aesthetic, dark mode inspired glassmorphism effects, and highly responsive components.
+* **Custom Metric Selection**: Effortlessly switch between "Default" standard metrics (EDA, Actigraphy, Pulse Rate, Temperature), "All" metrics, or any custom combination of available signals.
+* **Drag-and-Drop Reordering**: Intuitively drag and drop charts to reorder them on the screen in real-time, helping you stack related signals side-by-side for perfect correlation analysis.
+* **Contextual Annotations**: Click anywhere on a chart to drop a point or range-based note. Annotations visually overlay across your selected metrics so you never lose context.
+* **Activity Classification Overlays**: Toggle translucent background shading on the charts to see exactly when participants transitioned between classified activity states (e.g., "Walking", "Resting").
+* **One-Click PDF Export**: Easily export your currently visible (and ordered!) charts, annotations, and activity overlays directly into a neatly formatted, landscape A4 PDF report for sharing and presentations.
+
+## 🚀 Getting Started
+
+### Prerequisites
+* [.NET 8.0 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/8.0) or later.
+
+### Running the App
+1. Navigate to the `asp` directory inside this repository.
+2. Build and run the server using the .NET CLI:
    ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
+   cd asp/BioSignalVisualizer.Server
+   dotnet build
+   dotnet run
    ```
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+3. Open your browser and navigate to `http://localhost:5077/Tools/Empatica_Visualizer`.
 
-## Usage
+*(Note: Ensure your `data` folder contains the required CSV files in the correct directory structure, as defined in your `appsettings.json` BaseDataPath).*
 
-Run the Streamlit app from the repository root:
+## 🛠️ Tech Stack
+* **Framework**: ASP.NET Core Blazor (WebAssembly/Server hybrid architecture)
+* **Component Library**: [MudBlazor](https://mudblazor.com/)
+* **Charting**: [Blazor-ApexCharts](https://github.com/mikes-gh/blazor-apexcharts) (wrapping ApexCharts.js)
+* **PDF Generation**: [QuestPDF](https://www.questpdf.com/)
 
-```bash
-streamlit run visualizer/app.py
-```
-
-The sidebar lets you:
-- Refresh the catalog (useful after new data is synchronised).
-- Pick a date folder, participant export, and metric CSV.
-
-The interface shows a recording window at the top (first/last valid samples) and automatically surfaces the accelerometers-std, eda, pulse-rate, and temperature metrics for the selected participant/date so you always see the core signals up front. Each metric view displays interactive charts for numeric (line plot) and categorical (scatter) measurements, with translucent bands and a right-aligned legend (per chart) that mirror the activity-classification stream so state changes are immediately visible. Use the annotation panel beneath the recording window to drop per-timestamp phase-line notes that appear on every chart; manage them in one place. Switching dates or participants clears annotations automatically so notes stay scoped to the current dataset. Data discovery is cached for 60 seconds so the interface can stay responsive while still detecting new files shortly after they arrive.
-
-Use the `Download charts PDF` button near the top-right of the page to export the currently visible charts (including default metrics and any selected extra metric) to a single-page PDF for sharing. The app uses Plotly’s Kaleido engine, `pypdf`, and `Pillow`; if the button is disabled, install Kaleido with `pip install --force-reinstall kaleido==0.2.1` (and ensure Pillow is available) before restarting the app.
-
-## Raw Avro inspection
-
-To inspect the raw `.avro` device exports interactively, open `notebooks/avro_exploration.ipynb` in Jupyter. It previews the schema and loads a sample into a DataFrame so you can discover which fields are available.
-
-To stream the entire Avro file into per-metric CSV tables, use:
-
-```bash
-python scripts/extract_biometrics.py \
-  --input 2025-10-01/TESTSUBJECT-3YK9K1J1QX/raw_data/v6/1-1-TESTSUBJECT_1759347781.avro \
-  --output tables/raw_metrics
-```
-
-The script uses `fastavro` + `pandas` to flatten the records, automatically detects the first timestamp column, and writes one CSV per numeric measurement (axes, heart rate, temperature, etc.).
+## 📝 License
+This project is open-sourced under the **MIT License**. Feel free to use, modify, and distribute it!

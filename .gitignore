@@ -22,3 +22,5 @@ asp/**/TestResults/
 visualizer/node_modules/
 visualizer/dist/
 visualizer/.next/
+asp/**/publish/
+asp/test_apex/

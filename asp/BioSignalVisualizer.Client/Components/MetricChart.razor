@@ -180,7 +180,8 @@ else
                 Type = XAxisType.Datetime,
                 Labels = new XAxisLabels { DatetimeUTC = true, Format = "HH:mm" },
                 Min = GetChartTimestamp(minX),
-                Max = GetChartTimestamp(maxX)
+                Max = GetChartTimestamp(maxX),
+                Tooltip = new XAxisTooltip { Enabled = false }
             },
             Yaxis = new List<YAxis>
             {
@@ -195,6 +196,7 @@ else
             Annotations = new Annotations { Xaxis = xAnnotations },
             DataLabels = new DataLabels { Enabled = false },
             Legend = new Legend { Show = false },
+            Tooltip = new Tooltip { X = new TooltipX { Format = "hh:mm tt" } },
             Colors = new List<string> { GetMetricColor(Metric.Metric) }
         };
     }

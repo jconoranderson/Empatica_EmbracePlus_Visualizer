@@ -1,6 +1,6 @@
-# Bio-Signal Visualizer
+# Bio-Signal Visualizer | Empatica EmbracePlus Data Analysis
 
-A modern, highly interactive ASP.NET Blazor application designed to visualize, annotate, and export high-resolution biometric and activity data (such as data from Empatica devices). 
+A modern, highly interactive ASP.NET Blazor WebAssembly application designed to visualize, analyze, annotate, and export high-resolution digital biomarker and physiological activity data exported from **Empatica EmbracePlus** wearable devices.
 
 ## 🌟 Key Features
 

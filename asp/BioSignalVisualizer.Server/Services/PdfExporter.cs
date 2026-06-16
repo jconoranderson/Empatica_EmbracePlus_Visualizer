@@ -25,7 +25,7 @@ public sealed class PdfExporter
                     row.RelativeItem().Column(column =>
                     {
                         column.Item().Text("Empatica Digital Biomarker Summary").FontSize(18).SemiBold();
-                        column.Item().Text($"Participant: {request.Participant}  |  Date: {request.Date}");
+                        column.Item().Text($"Participants: {string.Join(", ", request.Participants)}  |  Date: {request.Date}");
                     });
                 });
 

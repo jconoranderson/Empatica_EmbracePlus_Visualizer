@@ -4,11 +4,11 @@ public record CatalogEntry(string Date, string Participant, IEnumerable<string> 
 
 public record ParticipantEntry(string Date, string Participant);
 
-public record MetricSeries(string Metric, IEnumerable<DataPoint> Points, IEnumerable<ActivityWindow>? Activity = null);
+public record MetricSeries(string Participant, string Metric, IEnumerable<DataPoint> Points, IEnumerable<ActivityWindow>? Activity = null);
 
 public record DataPoint(DateTime Timestamp, double Value);
 
-public record ActivityWindow(DateTime Start, DateTime End, string Classification, string Color);
+public record ActivityWindow(string Participant, DateTime Start, DateTime End, string Classification, string Color);
 
 public record AnnotationEntry(
     string Date,
@@ -21,7 +21,7 @@ public record AnnotationEntry(
 
 public record PdfExportRequest(
     string Date,
-    string Participant,
+    IEnumerable<string> Participants,
     IEnumerable<MetricSeries> Series,
     IEnumerable<AnnotationEntry> Annotations,
     IEnumerable<ActivityWindow>? Activity);

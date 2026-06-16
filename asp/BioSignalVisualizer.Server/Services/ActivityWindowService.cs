@@ -85,7 +85,7 @@ public sealed class ActivityWindowService
             var entry = entries[i];
             if (!string.Equals(entry.Label, currentLabel, StringComparison.OrdinalIgnoreCase))
             {
-                windows.Add(CreateWindow(start, entry.Timestamp, currentLabel));
+                windows.Add(CreateWindow(participant, start, entry.Timestamp, currentLabel));
                 start = entry.Timestamp;
                 currentLabel = entry.Label;
             }
@@ -101,12 +101,12 @@ public sealed class ActivityWindowService
             delta = TimeSpan.FromMinutes(1);
         }
 
-        windows.Add(CreateWindow(start, lastTimestamp + delta, currentLabel));
+        windows.Add(CreateWindow(participant, start, lastTimestamp + delta, currentLabel));
         return windows;
     }
 
-    private static ActivityWindow CreateWindow(DateTime start, DateTime end, string label)
-        => new(start, end, label, ResolveColor(label));
+    private static ActivityWindow CreateWindow(string participant, DateTime start, DateTime end, string label)
+        => new(participant, start, end, label, ResolveColor(label));
 
     private static string ResolveColor(string label)
     {

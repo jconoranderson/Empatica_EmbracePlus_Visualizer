@@ -19,6 +19,6 @@ public sealed class ExportController : ControllerBase
     public IActionResult Create([FromBody] PdfExportRequest request)
     {
         var pdfBytes = _pdfExporter.CreateSummaryPdf(request);
-        return File(pdfBytes, "application/pdf", $"{request.Participant}-{request.Date}.pdf");
+        return File(pdfBytes, "application/pdf", $"{string.Join("-", request.Participants)}-{request.Date}.pdf");
     }
 }

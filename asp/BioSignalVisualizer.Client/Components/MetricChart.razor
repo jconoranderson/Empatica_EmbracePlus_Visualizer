@@ -34,6 +34,8 @@ else
     [Parameter] public IEnumerable<AnnotationEntry> Annotations { get; set; } = Enumerable.Empty<AnnotationEntry>();
     [Parameter] public IEnumerable<ActivityWindow> ActivityWindows { get; set; } = Enumerable.Empty<ActivityWindow>();
     [Parameter] public bool ShowActivityLabels { get; set; } = false;
+    [Parameter] public DateTime? SyncMinX { get; set; }
+    [Parameter] public DateTime? SyncMaxX { get; set; }
 
     private string _displayName = string.Empty;
     private List<ActivityLegendItem> _legendItems = new();
@@ -83,7 +85,7 @@ else
         // Activity Windows as shaded regions
         if (ShowActivityLabels)
         {
-            foreach (var window in ActivityWindows)
+            foreach (var window in ActivityWindows.Where(w => w.Participant == Metric.Participant))
             {
                 var ann = new AnnotationsXAxis
                 {
@@ -160,13 +162,15 @@ else
             }
         }
 
-        var minX = Metric.Points.Min(p => p.Timestamp);
-        var maxX = Metric.Points.Max(p => p.Timestamp);
+        var minX = SyncMinX ?? Metric.Points.Min(p => p.Timestamp);
+        var maxX = SyncMaxX ?? Metric.Points.Max(p => p.Timestamp);
 
         _options = new ApexChartOptions<DataPoint>
         {
             Chart = new Chart
             {
+                Id = $"{Metric.Participant}-{Metric.Metric}",
+                Group = "sync-group",
                 Toolbar = new Toolbar { Show = true },
                 Zoom = new Zoom { Enabled = true, Type = AxisType.X },
                 Animations = new Animations { Enabled = false }

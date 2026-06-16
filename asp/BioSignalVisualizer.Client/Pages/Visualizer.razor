@@ -20,22 +20,41 @@
                     <MudSelectItem Value="@date">@date</MudSelectItem>
                 }
             </MudSelect>
-            <MudSelect T="string"
-                       @bind-Value="SelectedParticipant"
-                       Label="Participant"
-                       Disabled="string.IsNullOrEmpty(_selectedDate)"
-                       Immediate="true"
-                       id="participantselect">
-                @foreach (var participant in _participants)
-                {
-                    <MudSelectItem Value="@participant">@participant</MudSelectItem>
-                }
-            </MudSelect>
+            @if (_compareMode)
+            {
+                <MudSelect T="string"
+                           MultiSelection="true"
+                           @bind-SelectedValues="SelectedParticipants"
+                           Label="Participants"
+                           Disabled="string.IsNullOrEmpty(_selectedDate)"
+                           Immediate="true"
+                           id="participantselect">
+                    @foreach (var participant in _participants)
+                    {
+                        <MudSelectItem Value="@participant">@GetParticipantDisplayName(participant)</MudSelectItem>
+                    }
+                </MudSelect>
+            }
+            else
+            {
+                <MudSelect T="string"
+                           Value="SelectedParticipants.FirstOrDefault()"
+                           ValueChanged="OnSingleParticipantChanged"
+                           Label="Participant"
+                           Disabled="string.IsNullOrEmpty(_selectedDate)"
+                           Immediate="true"
+                           id="participantselect">
+                    @foreach (var participant in _participants)
+                    {
+                        <MudSelectItem Value="@participant">@GetParticipantDisplayName(participant)</MudSelectItem>
+                    }
+                </MudSelect>
+            }
             <MudSelect T="string"
                        MultiSelection="true"
                        @bind-SelectedValues="SelectedMetrics"
                        Label="Metric"
-                       Disabled="string.IsNullOrEmpty(_selectedParticipant)"
+                       Disabled="!_selectedParticipants.Any()"
                        id="metricselect">
                 <MudSelectItem Value="@DefaultMetricsToken">Default metrics</MudSelectItem>
                 <MudSelectItem Value="@AllMetricsToken">All metrics</MudSelectItem>
@@ -53,36 +72,73 @@
                        Immediate="true"
                        id="chartheightslider" />
             <MudSwitch T="bool" @bind-Value="ShowActivityLabels" Color="Color.Primary" Label="Show Activity" Class="mt-2" />
+            <MudSwitch T="bool" @bind-Value="_enableReordering" Color="Color.Secondary" Label="Reorder Charts" Class="mt-2" />
+            <MudSwitch T="bool" @bind-Value="CompareMode" Color="Color.Tertiary" Label="Compare" Class="mt-2" />
             <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="DownloadPdf" Disabled="_series.Count == 0" Class="mt-2 text-nowrap">Download PDF</MudButton>
         </MudPaper>
 
-        <MudPaper Class="pa-4 mt-4" Elevation="1">
-            <AnnotationPanel Annotations="_annotations"
-                              SelectedDate="@_selectedDate"
-                              SelectedParticipant="@_selectedParticipant"
-                              DisplayedMetrics="@(_series.Select(s => s.Metric))"
-                              AvailableTimes="_availableTimepoints"
-                              OnAnnotationsChanged="HandleAnnotationsChanged" />
-        </MudPaper>
+        @if (_selectedParticipants.Count() <= 1)
+        {
+            <MudPaper Class="pa-4 mt-4" Elevation="1">
+                <AnnotationPanel Annotations="_annotations"
+                                  SelectedDate="@_selectedDate"
+                                  SelectedParticipant="@_selectedParticipants.FirstOrDefault()"
+                                  DisplayedMetrics="@(_series.Select(s => s.Metric))"
+                                  AvailableTimes="_availableTimepoints"
+                                  OnAnnotationsChanged="HandleAnnotationsChanged" />
+            </MudPaper>
+        }
     </MudItem>
     <MudItem xs="12" md="9">
-        <MudDropContainer @ref="_dropContainer" T="MetricSeries" Items="@_series" ItemsSelector="@((item,dropzone) => true)" ItemDropped="ItemUpdated" Class="d-flex flex-column gap-4">
-            <ChildContent>
-                <MudDropZone T="MetricSeries" Identifier="charts" Class="flex-grow-1" AllowReorder="true" />
-            </ChildContent>
-            <ItemRenderer>
-                <div style="position: relative;">
-                    <div style="position: absolute; top: 12px; right: 12px; z-index: 10; cursor: grab;" class="mud-text-secondary">
-                        <MudIcon Icon="@Icons.Material.Filled.DragIndicator" />
+        @if (_enableReordering)
+        {
+            <MudDropContainer @ref="_dropContainer" T="MetricSeries" Items="@_series" ItemsSelector="@((item,dropzone) => true)" ItemDropped="ItemUpdated" Class="d-flex flex-column gap-4">
+                <ChildContent>
+                    <MudDropZone T="MetricSeries" Identifier="charts" Class="flex-grow-1" AllowReorder="true" />
+                </ChildContent>
+                <ItemRenderer>
+                    @if (CompareMode && IsFirstOfParticipant(context))
+                    {
+                        <MudPaper Class="pa-2 mt-4 mb-2" Elevation="0" Style="background-color: var(--mud-palette-background-grey); border-left: 4px solid var(--mud-palette-tertiary);">
+                            <MudText Typo="Typo.h6" Class="fw-bold">Participant: @context.Participant</MudText>
+                        </MudPaper>
+                    }
+                    <div style="position: relative;">
+                        <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 20; background-color: rgba(128,128,128,0.1); cursor: grab; display: flex; align-items: center; justify-content: center; border: 2px dashed var(--mud-palette-secondary); border-radius: 4px;">
+                            <MudChip T="string" Color="Color.Secondary" Icon="@Icons.Material.Filled.DragIndicator">Drag to Reorder</MudChip>
+                        </div>
+                        <div style="pointer-events: none;">
+                            <MetricChart Metric="context"
+                                         Height="_chartHeight"
+                                         Annotations="GetAnnotationsForChart(context.Participant)"
+                                         ActivityWindows="_activityWindows"
+                                         ShowActivityLabels="ShowActivityLabels" />
+                        </div>
                     </div>
-                    <MetricChart Metric="context"
+                </ItemRenderer>
+            </MudDropContainer>
+        }
+        else
+        {
+            <div class="d-flex flex-column gap-0">
+                @foreach (var metric in _series)
+                {
+                    @if (CompareMode && IsFirstOfParticipant(metric))
+                    {
+                        <MudPaper Class="pa-2 mt-4 mb-2" Elevation="0" Style="background-color: var(--mud-palette-background-grey); border-left: 4px solid var(--mud-palette-tertiary);">
+                            <MudText Typo="Typo.h6" Class="fw-bold">Participant: @GetParticipantDisplayName(metric.Participant)</MudText>
+                        </MudPaper>
+                    }
+                    <MetricChart Metric="metric"
                                  Height="_chartHeight"
-                                 Annotations="GetAnnotationsForChart(context.Metric)"
+                                 Annotations="GetAnnotationsForChart(metric.Participant)"
                                  ActivityWindows="_activityWindows"
-                                 ShowActivityLabels="_showActivityLabels" />
-                </div>
-            </ItemRenderer>
-        </MudDropContainer>
+                                 ShowActivityLabels="ShowActivityLabels"
+                                 SyncMinX="_syncMin"
+                                 SyncMaxX="_syncMax" />
+                }
+            </div>
+        }
     </MudItem>
 </MudGrid>
 
@@ -103,7 +159,7 @@
     private List<string> _metrics = new();
 
     private string? _selectedDate;
-    private string? _selectedParticipant;
+    private IEnumerable<string> _selectedParticipants = new HashSet<string>();
     private IEnumerable<string> _selectedMetrics = new HashSet<string> { DefaultMetricsToken };
 
     private MudDropContainer<MetricSeries>? _dropContainer;
@@ -111,6 +167,8 @@
     private List<AnnotationEntry> _annotations = new();
     private List<DateTime> _availableTimepoints = new();
     private List<ActivityWindow> _activityWindows = new();
+    private DateTime? _syncMin;
+    private DateTime? _syncMax;
 
     private double _chartHeight = DefaultChartHeight;
     private bool _userChartHeightLocked;
@@ -130,6 +188,51 @@
         }
     }
 
+    private bool _enableReordering = false;
+    private bool _compareMode = false;
+
+    private bool IsFirstOfParticipant(MetricSeries item)
+    {
+        var index = _series.IndexOf(item);
+        if (index <= 0) return true;
+        return _series[index - 1].Participant != item.Participant;
+    }
+
+    private bool CompareMode
+    {
+        get => _compareMode;
+        set
+        {
+            if (_compareMode != value)
+            {
+                _compareMode = value;
+                if (!_compareMode)
+                {
+                    _userChartHeightLocked = false;
+                    _selectedMetrics = new HashSet<string> { DefaultMetricsToken };
+
+                    var firstParticipant = _participants.FirstOrDefault();
+                    if (firstParticipant is not null)
+                    {
+                        _selectedParticipants = new HashSet<string> { firstParticipant };
+                    }
+                    else
+                    {
+                        _selectedParticipants = new HashSet<string>();
+                    }
+                    _ = InvokeAsync(async () => await OnParticipantsChanged(_selectedParticipants));
+                }
+                else if (_compareMode)
+                {
+                    _chartHeight = 120;
+                    _userChartHeightLocked = true;
+                    UpdateSyncBounds();
+                    _ = InvokeAsync(StateHasChanged);
+                }
+            }
+        }
+    }
+
     private string? SelectedDate
     {
         get => _selectedDate;
@@ -145,19 +248,31 @@
         }
     }
 
-    private string? SelectedParticipant
+    private IEnumerable<string> SelectedParticipants
     {
-        get => _selectedParticipant;
+        get => _selectedParticipants;
         set
         {
-            if (_selectedParticipant == value)
+            var valueList = value.ToList();
+            if (_selectedParticipants.SequenceEqual(valueList))
             {
                 return;
             }
 
-            _selectedParticipant = value;
-            _ = InvokeAsync(async () => await OnParticipantChanged(value));
+            _selectedParticipants = valueList;
+            _ = InvokeAsync(async () => await OnParticipantsChanged(_selectedParticipants));
         }
+    }
+
+    private Task OnSingleParticipantChanged(string value)
+    {
+        if (_selectedParticipants.Count() == 1 && _selectedParticipants.First() == value)
+        {
+            return Task.CompletedTask;
+        }
+
+        _selectedParticipants = new HashSet<string> { value };
+        return OnParticipantsChanged(_selectedParticipants);
     }
 
     private IEnumerable<string> SelectedMetrics
@@ -194,10 +309,6 @@
         if (_dates.Any())
         {
             await OnDateChanged(_dates.First());
-            if (_participants.Any())
-            {
-                await OnParticipantChanged(_participants.First());
-            }
         }
         await SetChartHeightFromViewport();
     }
@@ -211,7 +322,7 @@
     private async Task OnDateChanged(string? value)
     {
         _selectedDate = value;
-        _selectedParticipant = null;
+        _selectedParticipants = new HashSet<string>();
         _selectedMetrics = new HashSet<string> { DefaultMetricsToken };
         _series.Clear();
         _participants = await GetParticipantsAsync(value);
@@ -219,8 +330,8 @@
 
         if (_participants.Any())
         {
-            _selectedParticipant = _participants.First();
-            await OnParticipantChanged(_selectedParticipant);
+            _selectedParticipants = new HashSet<string> { _participants.First() };
+            await OnParticipantsChanged(_selectedParticipants);
         }
         else
         {
@@ -230,12 +341,44 @@
         }
     }
 
-    private async Task OnParticipantChanged(string? value)
+    private async Task OnParticipantsChanged(IEnumerable<string> values)
     {
-        _selectedParticipant = value;
-        _selectedMetrics = new HashSet<string> { DefaultMetricsToken };
+        _selectedParticipants = values;
         _series.Clear();
-        _metrics = GetMetrics(value);
+
+        _metrics = GetMetrics(_selectedParticipants.FirstOrDefault());
+
+        if (_selectedParticipants.Count() > 1)
+        {
+            var edaMetric = _metrics.FirstOrDefault(m => GetMetricSuffix(m).Equals("eda", StringComparison.OrdinalIgnoreCase));
+            if (edaMetric != null)
+                _selectedMetrics = new HashSet<string> { edaMetric };
+            else
+                _selectedMetrics = new HashSet<string> { DefaultMetricsToken };
+        }
+        else if (!_selectedParticipants.Any())
+        {
+            _selectedMetrics = new HashSet<string> { DefaultMetricsToken };
+        }
+        else
+        {
+            var newSelected = new HashSet<string>();
+            foreach (var oldMetric in _selectedMetrics)
+            {
+                if (oldMetric == DefaultMetricsToken || oldMetric == AllMetricsToken)
+                {
+                    newSelected.Add(oldMetric);
+                }
+                else
+                {
+                    var suffix = GetMetricSuffix(oldMetric);
+                    var newMetric = _metrics.FirstOrDefault(m => GetMetricSuffix(m).Equals(suffix, StringComparison.OrdinalIgnoreCase));
+                    if (newMetric != null) newSelected.Add(newMetric);
+                }
+            }
+            _selectedMetrics = newSelected.Any() ? newSelected : new HashSet<string> { DefaultMetricsToken };
+        }
+
         await LoadActivityWindowsAsync();
         await OnMetricsChanged(_selectedMetrics);
         UpdateAvailableTimepoints();
@@ -244,7 +387,7 @@
     private async Task OnMetricsChanged(IEnumerable<string> values)
     {
         _series.Clear();
-        if (_selectedDate is null || _selectedParticipant is null || !values.Any())
+        if (_selectedDate is null || !_selectedParticipants.Any() || !values.Any())
         {
             UpdateAvailableTimepoints();
             StateHasChanged();
@@ -324,18 +467,19 @@
 
     private async Task DownloadPdf()
     {
-        if (_selectedDate is null || _selectedParticipant is null || _series.Count == 0)
+        if (_selectedDate is null || !_selectedParticipants.Any() || _series.Count == 0)
         {
             return;
         }
 
-        var annotationSubset = _annotations
-            .Where(a => a.Date == _selectedDate && a.Participant == _selectedParticipant)
-            .ToList();
+        var annotationSubset = _selectedParticipants.Count() == 1 
+            ? _annotations.Where(a => a.Date == _selectedDate && a.Participant == _selectedParticipants.First()).ToList()
+            : new List<AnnotationEntry>();
+            
         var activitySubset = _showActivityLabels ? _activityWindows : new List<ActivityWindow>();
-        var request = new PdfExportRequest(_selectedDate, _selectedParticipant, _series, annotationSubset, activitySubset);
+        var request = new PdfExportRequest(_selectedDate, _selectedParticipants, _series, annotationSubset, activitySubset);
         var bytes = await Pdfs.DownloadSummaryAsync(request);
-        var fileName = $"{_selectedParticipant}-{_selectedDate}.pdf";
+        var fileName = $"{string.Join("-", _selectedParticipants)}-{_selectedDate}.pdf";
         var base64 = Convert.ToBase64String(bytes);
         await JS.InvokeVoidAsync("BlazorDownloadFile", fileName, "application/pdf", base64);
     }
@@ -379,27 +523,46 @@
 
     private async Task LoadActivityWindowsAsync()
     {
-        if (_selectedDate is null || _selectedParticipant is null)
+        if (_selectedDate is null || !_selectedParticipants.Any())
         {
             _activityWindows = new List<ActivityWindow>();
             return;
         }
 
-        var windows = await Activity.GetWindowsAsync(_selectedDate, _selectedParticipant);
-        _activityWindows = windows.ToList();
+        var windows = new List<ActivityWindow>();
+        foreach(var p in _selectedParticipants)
+        {
+            var pWindows = await Activity.GetWindowsAsync(_selectedDate, p);
+            windows.AddRange(pWindows);
+        }
+        _activityWindows = windows;
     }
 
     private async Task LoadMetricSeriesAsync(IEnumerable<string> metrics)
     {
-        foreach (var metric in metrics)
+        foreach (var p in _selectedParticipants)
         {
-            var result = await Metrics.GetSeriesAsync(_selectedDate!, _selectedParticipant!, metric);
-            if (result is not null)
+            var pMetrics = GetMetrics(p);
+            foreach (var metric in metrics)
             {
-                _series.Add(result);
+                var suffix = GetMetricSuffix(metric);
+                var actualMetricForP = pMetrics.FirstOrDefault(m => GetMetricSuffix(m).Equals(suffix, StringComparison.OrdinalIgnoreCase));
+                
+                if (actualMetricForP is not null)
+                {
+                    var result = await Metrics.GetSeriesAsync(_selectedDate!, p, actualMetricForP);
+                    if (result is not null)
+                    {
+                        _series.Add(result);
+                    }
+                }
             }
         }
+        
+        // The order is naturally preserved by the sequential awaits inside the loops above.
+        // Grouped by Participant, then ordered by the selection order of metrics.
         UpdateAvailableTimepoints();
+        UpdateSyncBounds();
         if (_series.Count > 0)
         {
             await SetChartHeightFromViewport();
@@ -438,9 +601,9 @@
         return name;
     }
 
-    private IEnumerable<AnnotationEntry> GetAnnotationsForChart(string metricName)
+    private IEnumerable<AnnotationEntry> GetAnnotationsForChart(string participantName)
     {
-        return _annotations.Where(a => a.Date == _selectedDate && a.Participant == _selectedParticipant);
+        return _annotations.Where(a => a.Date == _selectedDate && a.Participant == participantName);
     }
 
     private void UpdateAvailableTimepoints()
@@ -503,6 +666,37 @@
         catch (JSException)
         {
             // JS not ready; keep previous value.
+        }
+    }
+
+    private static string GetParticipantDisplayName(string participant)
+    {
+        if (string.IsNullOrWhiteSpace(participant)) return participant;
+        var dashIndex = participant.IndexOf('-');
+        return dashIndex >= 0 ? participant[..dashIndex] : participant;
+    }
+
+    private void UpdateSyncBounds()
+    {
+        if (_series.Count == 0 || !CompareMode)
+        {
+            _syncMin = null;
+            _syncMax = null;
+            return;
+        }
+
+        var minTime = _series.Max(s => s.Points.Min(p => p.Timestamp));
+        var maxTime = _series.Min(s => s.Points.Max(p => p.Timestamp));
+
+        if (minTime < maxTime)
+        {
+            _syncMin = minTime;
+            _syncMax = maxTime;
+        }
+        else
+        {
+            _syncMin = null;
+            _syncMax = null;
         }
     }
 

@@ -45,7 +45,7 @@ public sealed class MetricLoader
             points.Add(new DataPoint(timestamp.Value, value.Value));
         }
 
-        return new MetricSeries(metric, points.OrderBy(p => p.Timestamp));
+        return new MetricSeries(participant, metric, points.OrderBy(p => p.Timestamp));
     }
 
     private static bool TryExtractTimestamp(IDictionary<string, object> dict, out DateTime? timestamp)

@@ -1,19 +1,21 @@
-# BioSignalVisualizer (Blazor)
+# Bio-Signal Visualizer | Empatica Embrace Data Analysis
 
-This folder contains an ASP.NET Core 8 hosted Blazor application that mirrors the Streamlit Empatica visualizer.
-
-## Projects
-
-- **BioSignalVisualizer.Server** – ASP.NET Core Web API that exposes catalog, metric, annotations, and PDF export endpoints, and serves the Blazor app.
-- **BioSignalVisualizer.Client** – Blazor WebAssembly UI (MudBlazor + Chart.js) for data exploration.
-- **BioSignalVisualizer.Shared** – Shared DTOs used by both client and server.
+An advanced, open-source **ASP.NET Core 8 hosted Blazor WebAssembly** application designed for visualizing, analyzing, and annotating digital biomarker data exported from **Empatica Embrace** wearables. This tool provides a powerful, interactive alternative to standard scripts, allowing researchers and health tech professionals to effortlessly explore physiological data (EDA, Actigraphy, Pulse Rate, Temperature).
 
 ## Key Features
 
-- Automatic discovery of Empatica export folders (`VisualizerSettings:BaseDataPath`).
-- Chart rendering via Chart.js with adjustable height slider.
-- Persistent annotations stored in `annotations_store.json` next to the data.
-- Single-page PDF export using QuestPDF.
+- **Automatic Data Discovery**: Seamlessly parses Empatica Embrace export folders (`VisualizerSettings:BaseDataPath`).
+- **Interactive Multi-User Comparison**: Side-by-side synchronized timeline visualizations using modern charting (ApexCharts/Chart.js).
+- **Digital Biomarker Analysis**: Visualize Electrodermal Activity (EDA), Actigraphy, and more.
+- **Persistent Annotations**: Add and manage point/range event annotations stored locally alongside data.
+- **High-Quality PDF Exports**: Generate single-page PDF reports via QuestPDF for clinical or research sharing.
+
+## Architecture & Projects
+
+- **BioSignalVisualizer.Server** – ASP.NET Core Web API serving the Blazor app and handling backend file/catalog operations.
+- **BioSignalVisualizer.Client** – Blazor WebAssembly UI utilizing MudBlazor and ApexCharts for high-performance interactive visual analytics.
+- **BioSignalVisualizer.Shared** – Shared data models and DTOs bridging the client-server gap.
+
 
 ## Prerequisites
 

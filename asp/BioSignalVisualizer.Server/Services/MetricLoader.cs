@@ -60,7 +60,8 @@ public sealed class MetricLoader
 
             if (DateTime.TryParse(kvp.Value?.ToString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed))
             {
-                timestamp = parsed.ToUniversalTime();
+                var t = parsed.ToUniversalTime();
+                timestamp = new DateTime(t.Year, t.Month, t.Day, t.Hour, t.Minute, 0, DateTimeKind.Utc);
                 return true;
             }
 
@@ -68,12 +69,14 @@ public sealed class MetricLoader
             {
                 if (raw > 1_000_000_000_000)
                 {
-                    timestamp = DateTimeOffset.FromUnixTimeMilliseconds(raw).UtcDateTime;
+                    var t = DateTimeOffset.FromUnixTimeMilliseconds(raw).UtcDateTime;
+                    timestamp = new DateTime(t.Year, t.Month, t.Day, t.Hour, t.Minute, 0, DateTimeKind.Utc);
                     return true;
                 }
                 if (raw > 1_000_000_000)
                 {
-                    timestamp = DateTimeOffset.FromUnixTimeSeconds(raw).UtcDateTime;
+                    var t = DateTimeOffset.FromUnixTimeSeconds(raw).UtcDateTime;
+                    timestamp = new DateTime(t.Year, t.Month, t.Day, t.Hour, t.Minute, 0, DateTimeKind.Utc);
                     return true;
                 }
             }

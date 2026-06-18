@@ -46,6 +46,8 @@ else
 
     private int _previousAnnotationsHash = -1;
 
+
+
     protected override async Task OnParametersSetAsync()
     {
         if (Metric is null || !Metric.Points.Any())
@@ -196,13 +198,19 @@ else
             Annotations = new Annotations { Xaxis = xAnnotations },
             DataLabels = new DataLabels { Enabled = false },
             Legend = new Legend { Show = false },
-            Tooltip = new Tooltip { X = new TooltipX { Format = "hh:mm tt" } },
-            Colors = new List<string> { GetMetricColor(Metric.Metric) }
+            Tooltip = new Tooltip { Intersect = false, Shared = false, HideEmptySeries = true, X = new TooltipX { Format = "hh:mm tt" } },
+            Colors = new List<string> { GetMetricColor(Metric.Metric) },
+            Markers = new Markers
+            {
+                Size = 0.0001d,
+                Discrete = GetDiscreteMarkers()
+            }
         };
     }
 
-    private decimal GetDisplayValue(DataPoint p)
+    private decimal? GetDisplayValue(DataPoint p)
     {
+        if (double.IsNaN(p.Value)) return null;
         var isTemperature = MetricSuffix(Metric.Metric).Equals("TEMPERATURE", StringComparison.OrdinalIgnoreCase);
         var val = isTemperature ? Math.Round(p.Value * 9.0 / 5.0 + 32.0) : p.Value;
         return (decimal)val;
@@ -289,6 +297,37 @@ else
     {
         var estTime = ConvertToEst(utcDateTime);
         return new DateTimeOffset(estTime, TimeSpan.Zero).ToUnixTimeMilliseconds();
+    }
+
+    private List<MarkersDiscrete> GetDiscreteMarkers()
+    {
+        var result = new List<MarkersDiscrete>();
+        if (Metric?.Points == null) return result;
+
+        var points = Metric.Points.ToList();
+        for (int i = 0; i < points.Count; i++)
+        {
+            var p = points[i];
+            if (double.IsNaN(p.Value)) continue;
+
+            // Check if it's isolated (no non-NaN neighbors within adjacent points)
+            bool hasPrev = i > 0 && !double.IsNaN(points[i - 1].Value);
+            bool hasNext = i < points.Count - 1 && !double.IsNaN(points[i + 1].Value);
+
+            if (!hasPrev && !hasNext)
+            {
+                result.Add(new MarkersDiscrete
+                {
+                    SeriesIndex = 0,
+                    DataPointIndex = i,
+                    Size = 5,
+                    FillColor = GetMetricColor(Metric.Metric),
+                    StrokeColor = "#fff"
+                });
+            }
+        }
+
+        return result;
     }
 
     private sealed record ActivityLegendItem(string Label, string Color);

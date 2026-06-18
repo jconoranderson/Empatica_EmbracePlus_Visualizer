@@ -45,7 +45,39 @@ public sealed class MetricLoader
             points.Add(new DataPoint(timestamp.Value, value.Value));
         }
 
-        return new MetricSeries(participant, metric, points.OrderBy(p => p.Timestamp));
+        var orderedPoints = points.OrderBy(p => p.Timestamp).ToList();
+        if (orderedPoints.Count > 1)
+        {
+            var paddedPoints = new List<DataPoint>();
+            var currentTime = orderedPoints.First().Timestamp;
+            var endTime = orderedPoints.Last().Timestamp;
+            var pointIndex = 0;
+
+            while (currentTime <= endTime)
+            {
+                while (pointIndex < orderedPoints.Count && orderedPoints[pointIndex].Timestamp < currentTime)
+                {
+                    pointIndex++;
+                }
+
+                if (pointIndex < orderedPoints.Count && orderedPoints[pointIndex].Timestamp == currentTime)
+                {
+                    paddedPoints.Add(orderedPoints[pointIndex]);
+                    while (pointIndex < orderedPoints.Count && orderedPoints[pointIndex].Timestamp == currentTime)
+                    {
+                        pointIndex++;
+                    }
+                }
+                else
+                {
+                    paddedPoints.Add(new DataPoint(currentTime, double.NaN));
+                }
+                currentTime = currentTime.AddMinutes(1);
+            }
+            return new MetricSeries(participant, metric, paddedPoints);
+        }
+
+        return new MetricSeries(participant, metric, orderedPoints);
     }
 
     private static bool TryExtractTimestamp(IDictionary<string, object> dict, out DateTime? timestamp)

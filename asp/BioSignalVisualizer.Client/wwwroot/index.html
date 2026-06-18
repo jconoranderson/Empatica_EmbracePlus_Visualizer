@@ -22,6 +22,48 @@
     <div id="app">Loading...</div>
     <script src="_content/MudBlazor/MudBlazor.min.js"></script>
     <script src="_framework/blazor.webassembly.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const observer = new MutationObserver(() => {
+                const tooltips = document.querySelectorAll('.apexcharts-tooltip.apexcharts-active');
+                if (tooltips.length <= 1) return;
+
+                let targetTime = null;
+                const hoveredChart = document.querySelector('.apexcharts-canvas:hover');
+                if (hoveredChart) {
+                    const tooltip = hoveredChart.querySelector('.apexcharts-tooltip.apexcharts-active .apexcharts-tooltip-title');
+                    if (tooltip) {
+                        targetTime = tooltip.innerText;
+                    }
+                }
+
+                if (targetTime) {
+                    tooltips.forEach(tt => {
+                        const title = tt.querySelector('.apexcharts-tooltip-title');
+                        if (title && title.innerText !== targetTime) {
+                            tt.style.opacity = '0';
+                        } else {
+                            tt.style.opacity = '1';
+                        }
+                    });
+                }
+            });
+            observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+
+            document.addEventListener("mousemove", (e) => {
+                if (!e.target.closest('.metric-chart-wrapper')) {
+                    document.querySelectorAll('.apexcharts-tooltip.apexcharts-active').forEach(tt => {
+                        tt.classList.remove('apexcharts-active');
+                        tt.style.opacity = '0';
+                    });
+                    document.querySelectorAll('.apexcharts-xcrosshairs.apexcharts-active').forEach(tt => {
+                        tt.classList.remove('apexcharts-active');
+                        tt.style.opacity = '0';
+                    });
+                }
+            });
+        });
+    </script>
 </body>
 
 </html>

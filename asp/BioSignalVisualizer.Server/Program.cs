@@ -10,7 +10,11 @@ builder.Services.AddSingleton<AnnotationStore>();
 builder.Services.AddSingleton<PdfExporter>();
 builder.Services.AddSingleton<ActivityWindowService>();
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals;
+    });
 builder.Services.AddRazorPages();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();

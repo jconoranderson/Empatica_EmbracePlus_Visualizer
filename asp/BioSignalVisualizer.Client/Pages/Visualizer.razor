@@ -89,7 +89,7 @@
             </MudPaper>
         }
     </MudItem>
-    <MudItem xs="12" md="9">
+    <MudItem xs="12" md="9" Class="charts-container">
         @if (_enableReordering)
         {
             <MudDropContainer @ref="_dropContainer" T="MetricSeries" Items="@_series" ItemsSelector="@((item,dropzone) => true)" ItemDropped="ItemUpdated" Class="d-flex flex-column gap-4">
@@ -112,7 +112,9 @@
                                          Height="_chartHeight"
                                          Annotations="GetAnnotationsForChart(context.Participant)"
                                          ActivityWindows="_activityWindows"
-                                         ShowActivityLabels="ShowActivityLabels" />
+                                         ShowActivityLabels="ShowActivityLabels"
+                                         SyncMinX="_syncMin"
+                                         SyncMaxX="_syncMax" />
                         </div>
                     </div>
                 </ItemRenderer>
@@ -678,25 +680,68 @@
 
     private void UpdateSyncBounds()
     {
-        if (_series.Count == 0 || !CompareMode)
+        if (_series.Count == 0)
         {
             _syncMin = null;
             _syncMax = null;
             return;
         }
 
-        var minTime = _series.Max(s => s.Points.Min(p => p.Timestamp));
-        var maxTime = _series.Min(s => s.Points.Max(p => p.Timestamp));
+        var allPoints = _series.SelectMany(s => s.Points).ToList();
+        if (allPoints.Count == 0)
+        {
+            _syncMin = null;
+            _syncMax = null;
+            return;
+        }
+
+        var minTime = allPoints.Min(p => p.Timestamp);
+        var maxTime = allPoints.Max(p => p.Timestamp);
 
         if (minTime < maxTime)
         {
             _syncMin = minTime;
             _syncMax = maxTime;
+            AlignSeriesData();
         }
         else
         {
             _syncMin = null;
             _syncMax = null;
+        }
+    }
+
+    private void AlignSeriesData()
+    {
+        if (!_syncMin.HasValue || !_syncMax.HasValue) return;
+
+        var start = _syncMin.Value;
+        var end = _syncMax.Value;
+
+        for (int s = 0; s < _series.Count; s++)
+        {
+            var series = _series[s];
+            var originalPoints = series.Points
+                .Where(p => !double.IsNaN(p.Value))
+                .ToDictionary(p => p.Timestamp, p => p.Value);
+                
+            var alignedPoints = new List<DataPoint>();
+
+            var current = start;
+            while (current <= end)
+            {
+                if (originalPoints.TryGetValue(current, out var val))
+                {
+                    alignedPoints.Add(new DataPoint(current, val));
+                }
+                else
+                {
+                    alignedPoints.Add(new DataPoint(current, double.NaN));
+                }
+                current = current.AddMinutes(1);
+            }
+
+            _series[s] = series with { Points = alignedPoints };
         }
     }
 

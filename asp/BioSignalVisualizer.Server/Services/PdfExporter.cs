@@ -158,8 +158,11 @@ public sealed class PdfExporter
         var points = series.Points.OrderBy(p => p.Timestamp).ToList();
         if (!points.Any()) return;
 
-        var minValue = points.Min(p => p.Value);
-        var maxValue = points.Max(p => p.Value);
+        var validPoints = points.Where(p => !double.IsNaN(p.Value)).ToList();
+        if (!validPoints.Any()) return;
+
+        var minValue = validPoints.Min(p => p.Value);
+        var maxValue = validPoints.Max(p => p.Value);
         if (Math.Abs(maxValue - minValue) < 0.0001)
         {
             var adjustment = Math.Abs(maxValue) < 0.001 ? 1 : Math.Abs(maxValue) * 0.05;
@@ -238,10 +241,24 @@ public sealed class PdfExporter
         };
 
         var path = new SKPath();
-        path.MoveTo((float)TimeToX(points[0].Timestamp), (float)ValueToY(points[0].Value));
-        foreach (var point in points.Skip(1))
+        bool isNewLine = true;
+        foreach (var point in points)
         {
-            path.LineTo((float)TimeToX(point.Timestamp), (float)ValueToY(point.Value));
+            if (double.IsNaN(point.Value))
+            {
+                isNewLine = true;
+                continue;
+            }
+
+            if (isNewLine)
+            {
+                path.MoveTo((float)TimeToX(point.Timestamp), (float)ValueToY(point.Value));
+                isNewLine = false;
+            }
+            else
+            {
+                path.LineTo((float)TimeToX(point.Timestamp), (float)ValueToY(point.Value));
+            }
         }
         canvas.DrawPath(path, linePaint);
 

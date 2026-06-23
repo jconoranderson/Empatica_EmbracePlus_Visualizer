@@ -304,6 +304,7 @@ else
         var result = new List<MarkersDiscrete>();
         if (Metric?.Points == null) return result;
 
+        var color = GetMetricColor(Metric.Metric);
         var points = Metric.Points.ToList();
         for (int i = 0; i < points.Count; i++)
         {
@@ -321,8 +322,8 @@ else
                     SeriesIndex = 0,
                     DataPointIndex = i,
                     Size = 5,
-                    FillColor = GetMetricColor(Metric.Metric),
-                    StrokeColor = "#fff"
+                    FillColor = color,
+                    StrokeColor = color
                 });
             }
         }
